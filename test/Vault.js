@@ -289,5 +289,44 @@ describe("Vault", function () {
         });
     });
 
+    describe("change implementation", function () {
+        //TODO(测试proxy 合约)
+        it("change implementation", async function(){
+            [owner, user] = await ethers.getSigners();
+
+            // 部署 V1
+            const VaultV1 = await ethers.getContractFactory("VaultV1");
+            let vaultV1 = await VaultV1.deploy();
+            await vaultV1.waitForDeployment();
+
+            const initializeData = VaultV1.interface.encodeFunctionData(
+                "initialize",
+                [await usdt.getAddress(), interestRate]
+            );
+            console.log("initialize() encoded data:", initializeData);
+
+            const Proxy = await ethers.getContractFactory("SimpleProxy");
+            let proxy = await Proxy.deploy(await vaultV1.getAddress(), initializeData);
+            await proxy.waitForDeployment();
+
+            let proxyV1 = VaultV1.attach(await proxy.getAddress());
+
+            await proxyV1.setInterestRate(100);
+            expect(await proxyV1.interestPerBlock()).to.equal(100);
+
+            // deploy V2
+            VaultV2 = await ethers.getContractFactory("VaultV2");
+            const vaultV2 = await VaultV2.deploy();
+            await vaultV2.waitForDeployment();
+
+            await proxy.upgradeTo(await vaultV2.getAddress());
+            let proxyV2 = vaultV2.attach(await proxy.getAddress());
+            expect(await proxyV2.interestPerBlock()).to.equal(100);
+
+            expect(await  proxyV2.paused()).to.equal(false);
+            await proxyV2.setPaused(true);
+            expect(await  proxyV2.paused()).to.equal(true);
+        });
+    });
 
 });

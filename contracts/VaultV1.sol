@@ -73,7 +73,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         emit OwnerChanged(oldOwner, newOwner);
     }
 
-    function _accrue() internal {
+    function _accrue() internal virtual {
         uint256 currentBlock = block.number;
         if (currentBlock <= lastAccurateBlock) {
             return;
@@ -94,7 +94,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         emit Accrued(blocksPassed, interest);
     }
 
-    function totalUnderlyingAssetNow() public view returns (uint256) {
+    function totalUnderlyingAssetNow() public virtual view returns (uint256) {
         uint256 currentBlock = block.number;
         if (currentBlock <= lastAccurateBlock) {
             return totalUnderlyingAsset;
@@ -107,7 +107,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         return totalUnderlyingAsset + interest;
     }
 
-    function convertToShares(uint256 amount) public view returns (uint256) {
+    function convertToShares(uint256 amount) public virtual view returns (uint256) {
         uint256 totalSupplyNow = totalSupply();
         uint256 _totalUnderlyingAssetNow = totalUnderlyingAssetNow();
 
@@ -118,7 +118,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         }
     }
 
-    function convertToAssets(uint256 shares) public view returns (uint256) {
+    function convertToAssets(uint256 shares) public virtual view returns (uint256) {
         uint256 totalSupplyNow = totalSupply();
         uint256 _totalUnderlyingAssetNow = totalUnderlyingAssetNow();
 
@@ -129,7 +129,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         }
     }
 
-    function deposit(uint256 amount) public returns (uint256 shares) {
+    function deposit(uint256 amount) public virtual returns (uint256 shares) {
         require(amount > 0, "zero amount");
         _accrue();
 
@@ -157,7 +157,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (uint256 shares) {
+    ) external virtual returns (uint256 shares) {
         IERC20Permit(address(underlyingToken)).permit(
             msg.sender,
             address(this),
@@ -171,7 +171,7 @@ contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
         return deposit(amount);
     }
 
-    function withdraw(uint256 shares) external nonReentrant returns (uint256 amount) {
+    function withdraw(uint256 shares) external virtual nonReentrant returns (uint256 amount) {
         require(shares > 0, "zero shares");
         _accrue();
 

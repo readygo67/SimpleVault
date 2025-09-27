@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 
-contract SimpleProxy is Proxy, ERC1967Proxy {
+contract SimpleProxy is ERC1967Proxy {
 
     constructor(address _implementation, bytes memory _data) ERC1967Proxy(_implementation, _data){
         ERC1967Utils.changeAdmin(msg.sender);
@@ -23,10 +23,7 @@ contract SimpleProxy is Proxy, ERC1967Proxy {
         ERC1967Utils.upgradeToAndCall(newImplementation,  "");
     }
 
-    function upgradeToAndCall(address newImplementation, bytes calldata data)
-    external
-    payable
-    onlyAdmin
+    function upgradeToAndCall(address newImplementation, bytes calldata data)  external payable onlyAdmin
     {
         ERC1967Utils.upgradeToAndCall(newImplementation, data);
     }
@@ -39,44 +36,3 @@ contract SimpleProxy is Proxy, ERC1967Proxy {
     receive() external payable {} //make compiler happy
 
 }
-
-//pragma solidity ^0.8.28;
-//
-//import "@openzeppelin/contracts@4.9.6/proxy/ERC1967/ERC1967Upgrade.sol";
-//import "@openzeppelin/contracts@4.9.6/proxy/Proxy.sol";
-//
-//contract SimpleProxy is Proxy, ERC1967Upgrade {
-//    constructor(address implementation, bytes memory data) {
-//        _changeAdmin(msg.sender);
-//        _upgradeToAndCall(implementation, data, false);
-//    }
-//
-//    modifier onlyAdmin() {
-//        require(msg.sender == _getAdmin(), "not admin");
-//        _;
-//    }
-//
-//    function admin() external view returns (address) {
-//        return _getAdmin();
-//    }
-//
-//    function upgradeTo(address newImplementation) external onlyAdmin {
-//        _upgradeTo(newImplementation);
-//    }
-//
-//    function upgradeToAndCall(address newImplementation, bytes calldata data)
-//    external
-//    payable
-//    onlyAdmin
-//    {
-//        _upgradeToAndCall(newImplementation, data, false);
-//    }
-//
-//    function _implementation() internal view override returns (address) {
-//        return _getImplementation();
-//    }
-//
-//    function implementation() public view returns (address) {
-//        return _implementation();
-//    }
-//}
