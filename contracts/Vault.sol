@@ -4,8 +4,9 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract Vault is ERC20 {
+contract Vault is ERC20, ReentrancyGuard {
     using SafeERC20 for IERC20;
     uint256 constant public BASE = 1e18;
     address public owner;
@@ -139,8 +140,30 @@ contract Vault is ERC20 {
         emit Deposit(msg.sender, amount, shares);
     }
 
+//    function depositWithPermit(
+//        uint256 amount,
+//        uint256 deadline,
+//        uint8 v,
+//        bytes32 r,
+//        bytes32 s
+//    ) external returns (uint256 shares) {
+//        // Permit the spender (the vault contract) to spend the user's tokens
+//        underlyingToken.permit(
+//            msg.sender,
+//            address(this),
+//            amount,
+//            deadline,
+//            v,
+//            r,
+//            s
+//        );
+//
+//        // Now we can call the regular deposit function
+//        return deposit(amount);
+//    }
+
     /// @notice Withdraw by burning shares, receive underlying Token
-    function withdraw(uint256 shares) external returns (uint256 amount) {
+    function withdraw(uint256 shares) external nonReentrant returns (uint256 amount) {
         require(shares > 0, "zero shares");
         _accrue();
 
