@@ -28,9 +28,10 @@ describe("Vault", function () {
         usdt = await USDT.deploy();
         await usdt.waitForDeployment();
 
-        const Vault = await ethers.getContractFactory("Vault");
-        vault = await Vault.deploy(await usdt.getAddress(), interestRate);
+        const Vault = await ethers.getContractFactory("VaultV1");
+        vault = await Vault.deploy();
         await vault.waitForDeployment();
+        await vault.initialize(await usdt.getAddress(), interestRate);
 
         //fund vault, make sure enough underlying asset for yielding
         await usdt.mint(await vault.getAddress(), 1000n * initFund)

@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract Vault is ERC20, ReentrancyGuard {
-    using SafeERC20 for IERC20;
-    uint256 constant public BASE = 1e18;
+contract VaultV1 is Initializable, ERC20Upgradeable, ERC20PermitUpgradeable {
+    using SafeERC20 for IERC20Metadata;
+
+    uint256 public constant BASE = 1e18;
     address public owner;
 
-    IERC20 public immutable underlyingToken;
-    uint256 public immutable initialExchangeMultiplier;  // initialExchangeMultiplier = 10^(vToken.decimals - underlyingToken.decimals()), 1 underylingToken can exchange # vToken
+    IERC20Metadata public underlyingToken;
+    uint256 public initialExchangeMultiplier;
 
     uint256 private totalUnderlyingAsset;
     uint256 public lastAccurateBlock;
     uint256 public interestPerBlock; // fraction per block with 1e18 precision
+    uint256 private _nonReentrant;
 
     event Deposit(address indexed user, uint256 amount, uint256 shares);
     event Withdraw(address indexed user, uint256 shares, uint256 amount);
@@ -24,8 +27,23 @@ contract Vault is ERC20, ReentrancyGuard {
     event PerBlockRateUpdated(uint256 oldRate, uint256 newRate);
     event OwnerChanged(address oldOwner, address newOwner);
 
-    constructor(IERC20Metadata _underlyingToken, uint256 _interestPerBlock) ERC20("vUSDT", "vUSDT") {
+
+    modifier nonReentrant() {
+        require(_nonReentrant == 0, "Reentrant call");
+        _nonReentrant = 1;
+        _;
+        _nonReentrant = 0;
+    }
+
+
+    function initialize(
+        IERC20Metadata _underlyingToken,
+        uint256 _interestPerBlock
+    ) public initializer {
         require(address(_underlyingToken) != address(0), "invalid underlying token");
+        __ERC20_init("vUSDT", "vUSDT");
+        __ERC20Permit_init("vUSDT");
+
         underlyingToken = _underlyingToken;
         owner = msg.sender;
         interestPerBlock = _interestPerBlock;
@@ -55,7 +73,6 @@ contract Vault is ERC20, ReentrancyGuard {
         emit OwnerChanged(oldOwner, newOwner);
     }
 
-    /// @notice accure the interest
     function _accrue() internal {
         uint256 currentBlock = block.number;
         if (currentBlock <= lastAccurateBlock) {
@@ -69,7 +86,7 @@ contract Vault is ERC20, ReentrancyGuard {
             return;
         }
 
-        uint256 interest = totalUnderlyingAsset * interestPerBlock * blocksPassed / BASE;
+        uint256 interest = (totalUnderlyingAsset * interestPerBlock * blocksPassed) / BASE;
 
         if (interest > 0) {
             totalUnderlyingAsset += interest;
@@ -77,7 +94,6 @@ contract Vault is ERC20, ReentrancyGuard {
         emit Accrued(blocksPassed, interest);
     }
 
-    /// @notice Returns total underlying assets including accrued interest up to current block
     function totalUnderlyingAssetNow() public view returns (uint256) {
         uint256 currentBlock = block.number;
         if (currentBlock <= lastAccurateBlock) {
@@ -87,11 +103,10 @@ contract Vault is ERC20, ReentrancyGuard {
             return totalUnderlyingAsset;
         }
         uint256 blocksPassed = currentBlock - lastAccurateBlock;
-        uint256 interest = totalUnderlyingAsset * interestPerBlock * blocksPassed / BASE;
+        uint256 interest = (totalUnderlyingAsset * interestPerBlock * blocksPassed) / BASE;
         return totalUnderlyingAsset + interest;
     }
 
-    /// @notice Convert asset amount to shares given current state (view variant)
     function convertToShares(uint256 amount) public view returns (uint256) {
         uint256 totalSupplyNow = totalSupply();
         uint256 _totalUnderlyingAssetNow = totalUnderlyingAssetNow();
@@ -99,22 +114,20 @@ contract Vault is ERC20, ReentrancyGuard {
         if (totalSupplyNow == 0 || _totalUnderlyingAssetNow == 0) {
             return amount * initialExchangeMultiplier;
         } else {
-            return amount * totalSupplyNow / _totalUnderlyingAssetNow;
+            return (amount * totalSupplyNow) / _totalUnderlyingAssetNow;
         }
     }
 
-    /// @notice Convert shares to assets given current state (view variant)
     function convertToAssets(uint256 shares) public view returns (uint256) {
         uint256 totalSupplyNow = totalSupply();
         uint256 _totalUnderlyingAssetNow = totalUnderlyingAssetNow();
 
         if (totalSupplyNow == 0 || _totalUnderlyingAssetNow == 0) {
             return shares / initialExchangeMultiplier;
-        }else{
-            return shares * _totalUnderlyingAssetNow / totalSupplyNow  ;
+        } else {
+            return (shares * _totalUnderlyingAssetNow) / totalSupplyNow;
         }
     }
-
 
     function deposit(uint256 amount) public returns (uint256 shares) {
         require(amount > 0, "zero amount");
@@ -127,60 +140,56 @@ contract Vault is ERC20, ReentrancyGuard {
         if (totalSupplyNow == 0 || totalUnderlyingAsset == 0) {
             shares = amount * initialExchangeMultiplier;
         } else {
-            shares = amount * totalSupplyNow / totalUnderlyingAsset;
+            shares = (amount * totalSupplyNow) / totalUnderlyingAsset;
         }
         require(shares > 0, "zero shares");
 
-        // update totalUnderlyingAsset
         totalUnderlyingAsset += amount;
 
-        // mint shares to,update totalSupply
         _mint(msg.sender, shares);
 
         emit Deposit(msg.sender, amount, shares);
     }
 
-//    function depositWithPermit(
-//        uint256 amount,
-//        uint256 deadline,
-//        uint8 v,
-//        bytes32 r,
-//        bytes32 s
-//    ) external returns (uint256 shares) {
-//        // Permit the spender (the vault contract) to spend the user's tokens
-//        underlyingToken.permit(
-//            msg.sender,
-//            address(this),
-//            amount,
-//            deadline,
-//            v,
-//            r,
-//            s
-//        );
-//
-//        // Now we can call the regular deposit function
-//        return deposit(amount);
-//    }
+    function depositWithPermit(
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256 shares) {
+        IERC20Permit(address(underlyingToken)).permit(
+            msg.sender,
+            address(this),
+            amount,
+            deadline,
+            v,
+            r,
+            s
+        );
 
-    /// @notice Withdraw by burning shares, receive underlying Token
+        return deposit(amount);
+    }
+
     function withdraw(uint256 shares) external nonReentrant returns (uint256 amount) {
         require(shares > 0, "zero shares");
         _accrue();
 
         require(balanceOf(msg.sender) >= shares, "insufficient shares");
-        // compute assets to return
         uint256 totalSupplyNow = totalSupply();
-        amount = shares * totalUnderlyingAsset / totalSupplyNow  ;
+        amount = (shares * totalUnderlyingAsset) / totalSupplyNow;
 
         require(amount > 0, "zero amount");
 
-        // burn shares and update accounting
         _burn(msg.sender, shares);
         totalUnderlyingAsset -= amount;
 
-        // transfer underlying to user
         underlyingToken.safeTransfer(msg.sender, amount);
 
         emit Withdraw(msg.sender, shares, amount);
+    }
+
+    function version() external virtual pure returns (string memory) {
+        return "V1";
     }
 }
